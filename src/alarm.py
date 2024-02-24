@@ -7,55 +7,14 @@
 
 import math, time
 
-# play a sound out gpio pin speaker for alarms
-audio = None
-decoder = None
-
-try:
-    from audiocore import WaveFile
-    from audiopwmio import PWMAudioOut as AudioOut
-    audio = AudioOut(board.GP14)
-    from audiomp3 import MP3Decoder
-    from audiopwmio import PWMAudioOut as AudioOut
-    decoder = MP3Decoder(mp3_file)
-except Exception as e:
-    print('failed to initialize audio', e)
-    #mono 22khz 16bit, or mp3 mono 16khz 32kbit
-
-muted = False
-
-def play_sound(filename):
-    if muted:
-        return
-
-    if not audio:
-        return
-
-    with open(filename, 'rb') as wave_file:
-        wave = WaveFile(wave_file)
-        audio.play(wave)
-        while audio.playing:
-            pass
-
-def play_mp3(filename):
-    if muted:
-        return
-
-    if not decoder:
-        return
-
-    decoder.file = open(filename, 'rb')
-    audio.play(decoder)
-    while audio.playing:
-        pass
-
+from sound import play_mp3
 
 def alarm(index):
     print("ALARM", index)
     if index == 1:
-        play_mp3('alarm1.mp3')
+        play_mp3('slow.mp3')
     else:
-        play_mp3('alarm2.mp3')
+        play_mp3('happy.mp3')
 
 #helper trigonomotry functions
 def sind(angle):
@@ -143,8 +102,6 @@ def compute_alarm(gps_data, ais_data):
     # conditions allow for alarm
     alarm(2)
 
-
-
 def ticks_ms():
     try:
         return time.ticks_ms()
@@ -156,6 +113,4 @@ if __name__ == '__main__':
     gps_data = {'latitude': 45, 'longitude': -70, 'sog': 5, 'cog': 90}
     ais_data = {'latitude': 45, 'longitude': -70.1, 'sog': 5.1, 'cog': 90, 'rot': 0}
     
-    ticks = ticks_ms()
     compute_alarm(gps_data, ais_data)
-    print('took', ticks_ms() - ticks, 'ms')

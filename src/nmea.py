@@ -15,6 +15,12 @@ def nmea_cksum(msg):
 def check_nmea_cksum(line):
     cksplit = line.split('*')
     try:
-        return nmea_cksum(cksplit[0][1:]) == int(cksplit[1], 16)
-    except:
+        computed = nmea_cksum(cksplit[0][1:])
+        lineck = int(cksplit[1], 16)
+        if computed == lineck:
+            return True
+        print('chekcsum faild', computed, lineck)
+        return False
+    except Exception as e:
+        print('failed checksum exception', e)
         return False

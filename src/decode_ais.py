@@ -9,6 +9,8 @@ import time
 
 from nmea import check_nmea_cksum
 
+# see: https://gpsd.gitlab.io/gpsd/AIVDM.html
+
 ais_packets = {}
 
 def decode_ais(line):
@@ -123,10 +125,27 @@ def decode_ais_data(channel, data):
             'cog': course_over_ground,
             'lon': longitude,
             'lat': latitude,
-            'ts': (time.time(), timestamp_s)}
+            'ts': (time.ticks_ms(), timestamp_s)}
 
-# test packets
-if __name__ == '__main__':
+def test():
+    from machine import UART, Pin
+    from non_blocking_readline import non_blocking_readline
+    uart0 = UART(0, baudrate=38400, tx=Pin(0), rx=Pin(1))
+    uart0.init(bits=8, parity=None, stop=1, timeout=0)
+
+    while True:
+        line = non_blocking_readline(uart0)
+        if line:
+            print(line.strip())
+            t0 = time.ticks_ms()
+            result = decode_ais(line)
+            t1 = time.ticks_ms()
+            print(result)
+            print(t1-t0)
+        else:
+            time.sleep(1)
+
+
     packets = ['!AIVDM,1,1,,B,13MARih000wbAbJP0kr23aSV0<0g,0*73',
                '!AIVDM,1,1,,A,13P>Hq0000wbF:pP0jIEdkNH0l0O,0*46',
                '!AIVDM,1,1,,A,13P>Hq0000wbF:lP0jI5dkNH0d0N,0*23',
@@ -142,3 +161,5 @@ if __name__ == '__main__':
         print(decode_ais(p))
 
     print('took', time.ticks_ms() - ticks, 'ms')
+
+
