@@ -43,7 +43,6 @@ def play_mp3(filename):
         return
 
     if not decoder:
-        print('no decoder')
         return
 
     print('opening', filename)

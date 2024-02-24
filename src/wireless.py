@@ -12,6 +12,7 @@ import asyncio
 
 ssid="mars"
 psk="rmyu030/"
+nmea_port = 20220
 
 #Connect to WLAN
 wlan = network.WLAN(network.STA_IF)
@@ -29,7 +30,7 @@ responder = Responder(
     host=lambda: "ais_monitor"
 )
 
-responder.advertise("_nmea", "_tcp", port=30330)
+responder.advertise("_nmea", "_tcp", port=nmea_port)
 
 writers = []
 async def serve_nmea():
@@ -49,7 +50,7 @@ async def serve_nmea():
 
     print('nmea server loading...')
     try:
-        server = await asyncio.start_server(handle_request, host='0.0.0.0', port=30330)
+        server = await asyncio.start_server(handle_request, host='0.0.0.0', port=nmea_port)
         await asyncio.sleep(1)
         print('nmea server started')
         await server.wait_closed()
@@ -67,14 +68,16 @@ async def write_nmea(line):
         except Exception as e:
             print("exception writing to writer", e, writer)
             writers.remove(writer)
+    print(line.strip())
 
 async def maintain_connection():
     while True:
+        t0 = time.ticks_ms()
         if not wlan.isconnected():
             while not wlan.isconnected():
                 s = wlan.status()
                 print('connecting...', s)
-                if s == -1:
+                if s == -1 or time.ticks_ms() - t0 > 10*1000:
                     wlan.connect(ssid, psk)
 
                 await asyncio.sleep(1)
@@ -106,4 +109,3 @@ def main():
     loop.create_task(read_nmea())
     loop.create_task(maintain_connection())
     loop.run_forever()
-

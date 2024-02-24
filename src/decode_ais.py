@@ -6,7 +6,6 @@
 # version 3 of the License, or (at your option) any later version.  
 
 import time
-
 from nmea import check_nmea_cksum
 
 # see: https://gpsd.gitlab.io/gpsd/AIVDM.html
@@ -161,5 +160,3 @@ def test():
         print(decode_ais(p))
 
     print('took', time.ticks_ms() - ticks, 'ms')
-
-

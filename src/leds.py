@@ -5,6 +5,7 @@
 # License as published by the Free Software Foundation; either
 # version 3 of the License, or (at your option) any later version.  
 
+import time
 from machine import Pin
 
 # table for the various leds
@@ -31,10 +32,10 @@ def on_timeout(name, t=200):
     led_timeouts[name] = time.ticks_ms()+t
     value(name, True)
 
-def timeout(t);
+def timeout(t):
     for name, t0 in led_timeouts.items():
         if t > t0:
-            led_value(name, False)
+            value(name, False)
 
 if __name__ == '__main__':
     for led in led_pins:

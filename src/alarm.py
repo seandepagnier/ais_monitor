@@ -9,7 +9,18 @@ import math, time
 
 from sound import play_mp3
 
+# 1 = target within 1 mile
+# 2 = potential target approaching
+# 3 = gps failure
+alarmtime = time.ticks_ms()
 def alarm(index):
+    # sound alarm at most every 10 seconds
+    t = time.ticks_ms()
+    global alarmtime
+    if t - alarmtime < 10*1000:
+        return
+    alarmtime = t
+    
     print("ALARM", index)
     if index == 1:
         play_mp3('slow.mp3')
@@ -44,7 +55,7 @@ def simple_xy(lat1, lon1, lat2, lon2):
 
 # from gps data for boat, and ais position data, determine if a collision is imminent
 # if so, sound an alarm
-def compute_alarm(gps_data, ais_data):
+def compute(gps_data, ais_data):
     if not gps_data:
         return
 
@@ -84,16 +95,16 @@ def compute_alarm(gps_data, ais_data):
     else:
         t = (vx*x + vy*y)/v2
 
-    # distance at point of closest approach
+    # closest point of apprach distance in nautical miles
     d = hypot(t*vx - x, t*vy - y)
     
-    # time is in hours, convert to seconds
+    # time till closest point of approach is in hours, convert to seconds
     t *= 3600
 
     if t < -30:  # tcpa is more than 30 seconds in past, no alarm
         return
 
-    if t > 600: # tcpa is more than 5 minutes in future , no alarm
+    if t > 1200: # tcpa is more than 10 minutes in future, no alarm
         return
 
     if d > 3: # cpa is more than 3 miles away, no alarm

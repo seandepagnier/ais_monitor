@@ -29,7 +29,7 @@ async def index(req):
 
 async def serve():
     try:
-        await app.start_server(debug=True)
+        await app.start_server(port=80, debug=True)
     except Exception as e:
         print("CAUGHT EXCEPTION server!!", e)
         import machine
@@ -59,5 +59,3 @@ def main():
     loop = asyncio.get_event_loop()
     loop.create_task(serve())
     loop.run_forever()
-
-main()

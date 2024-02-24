@@ -6,11 +6,15 @@
 # version 3 of the License, or (at your option) any later version.  
 
 import time, math, os
+starttime = time.ticks_ms()
+
+
+import asyncio
 import machine, gc, micropython
 
 from decode_ais import decode_ais
 from decode_gps import decode_gps
-from alarm import compute_alarm
+import alarm
 from non_blocking_readline import non_blocking_readline
 import wireless
 import leds
@@ -19,87 +23,105 @@ import web
 # this pin is used for a button that mutes the alarm
 mute_button = machine.Pin(12, machine.Pin.PULL_UP)
 
-gps_data = None
-ships = {}
-ships_led_time = 0
 
 # initialize uart0 to receive ais data at 38400 baud
 uart0 = machine.UART(0, baudrate=38400, tx=machine.Pin(0), rx=machine.Pin(1))
 uart0.init(bits=8, parity=None, stop=1, timeout=0)
 
 # initialize uart1 to receive gps messages at 4800 baud
-uart1 = machine.UART(0, baudrate=38400, tx=machine.Pin(4), rx=machine.Pin(5))
+uart1 = machine.UART(1, baudrate=4800, tx=machine.Pin(4), rx=machine.Pin(5))
 uart1.init(bits=8, parity=None, stop=1, timeout=0)
 
-
+idle_per = 100
 async def iteration():
-    t = time.ticks_ms()
-    # receive ais data
-    ais_line = non_blocking_readline(uart0)
-    if ais_line:
-        await wireless.write_nmea(ais_line)
-        ais_data = decode_ais(ais_line)
-        if ais_data:
-            ships[ais_data['mmsi']] = ais_data
-            leds.on_timeout('ais')
-            compute_alarm(ais_data)
+    gps_data = None
+    gps_time = time.ticks_ms()
+    ships = {}
+    ships_led_time = 0
+    mute_toggle_time = time.ticks_ms()
+    muted = False
 
-    # receive gps data
-    gps_line = non_blocking_readline(uart1)
-    if gps_line:
-        await wireless.write_nmea(gps_line)
-        gps_data = decode_gps(gps_line)
-        if gps_data:
-            leds.on_timeout('gps', 10)
+    while True:
+        t = time.ticks_ms()
+        # receive ais data
+        ais_line = non_blocking_readline(uart0)
+        if ais_line:
+            await wireless.write_nmea(ais_line)
+            ais_data = decode_ais(ais_line)
+            if ais_data:
+                ships[ais_data['mmsi']] = ais_data
+                leds.on_timeout('ais')
+                alarm.compute(gps_data, ais_data)
 
-    # flash ships led based on closest ship
-    # once per second for 1 mile,  once every 10 seconds if 10 miles
-    if t > ships_led_time:
-        mindist = 10
-        for mmsi in list(ships):
-            t0, ts = ship[mmsi]['ts']
-            if t - t0 > 600:  # timeout after 10 minutes
-                del ships[mmsi]
-            else:
-                dist = ship[mmsi]['dist']
-                mindist = min(mindist, dist)
-        if mindist < 10:
-            leds.on_timeout('ships')
-        ships_led_time = t+mindist*1000
+        # receive gps data
+        gps_line = non_blocking_readline(uart1)
+        if gps_line:
+            await wireless.write_nmea(gps_line)
+            gps_data = decode_gps(gps_line)
+            if gps_data:
+                leds.on_timeout('gps', 10)
+                gps_time = time.ticks_ms()
 
-    # check mute button to toggle mute function
-    if not mute_button.value():
-        if t-mute_toggle_time > 1:
-            muted = not muted
-            mute_toggle_time = t
-        led_on('mute', muted)
+        # if no gps fix in 30 seconds, alarm!
+        if t - gps_time > 30000:
+            alarm.alarm(3)
 
-    # turn off leds that timed out
-    leds.timeout(t)
+        # flash ships led based on closest ship
+        # once per second for 1 mile,  once every 10 seconds if 10 miles
+        if t > ships_led_time:
+            mindist = 10
+            for mmsi in list(ships):
+                ship = ships[mmsi]
+                t0, ts = ship['ts']
+                if t - t0 > 600:  # timeout after 10 minutes
+                    del ships[mmsi]
+                elif 'dist' in ship:
+                    dist = ship['dist']
+                    mindist = min(mindist, dist)
+            if mindist < 10:
+                leds.on_timeout('ships')
+                ships_led_time = t+mindist*1000
+
+        # check mute button to toggle mute function
+        if not mute_button.value():
+            if t-mute_toggle_time > 1:
+                muted = not muted
+                mute_toggle_time = t
+                leds.value('mute', muted)
+
+        # turn off leds that timed out
+        leds.timeout(t)
+
+        # feed the watchdog
+        wdt.feed()
         
-    # sleep for remainder of second
-    await asyncio.sleep_ms(max(1000-time.ticks_ms()+t, 0))
+        # sleep for remainder of second
+        sleep_ms = max(1000-time.ticks_ms()+t, 0)
+        global idle_per
+        idle_per = (sleep_ms/10)*.01 + idle_per*.99
+        await asyncio.sleep_ms(sleep_ms)
 
 wdt = machine.WDT(timeout=8000)  # enable it with a timeout of 8s
 
-async def feed_watchdog():
-    while True:
-        wdt.feed()
-        await asyncio.sleep(3)
-
-
 async def report_statistics():
     while True:
+        t0 = time.ticks_ms()
         F = gc.mem_free()
         A = gc.mem_alloc()
         print('mem stat', F, A)
         s = os.statvfs('/')
-        print(f"Free storage: {s[0]*s[3]/1024} KB")
+        t1 = time.ticks_ms()
+        print(f"Free storage: {s[0]*s[3]/1024} KB", t1-t0)
+
+        print('iteration idle %', idle_per)
+        print('start', starttime/1000, 'run time ', (t1-starttime)/1000)
+
         micropython.mem_info()
-        await asyncio.sleep(10)
+        await asyncio.sleep(60)
 
 leds.value('pwr', True)
 
+print('create tasks')
 
 # create tasks
 loop = asyncio.get_event_loop()
@@ -108,7 +130,8 @@ loop.create_task(report_statistics())
 loop.create_task(wireless.serve_nmea())
 loop.create_task(wireless.maintain_connection())
 loop.create_task(web.serve())
-loop.create_task(feed_watchdog())
+
+print('run main loop')
 loop.run_forever()
 
 print('finished main loop??')
