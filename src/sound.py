@@ -22,12 +22,7 @@ except Exception as e:
     print('failed to initialize audio', e)
     #mono 22khz 16bit, or mp3 mono 16khz 32kbit
 
-muted = False
-
 def play_sound(filename):
-    if muted:
-        return
-
     if not audio:
         return
 

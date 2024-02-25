@@ -9,6 +9,9 @@
 import asyncio
 from microdot import Microdot, Response
 from microdot.utemplate import Template
+
+import alarm
+
 app = Microdot()
 
 Response.default_content_type = 'text/html'
@@ -23,8 +26,14 @@ async def index(req):
     if req.method == 'POST':
         ssid = req.form.get('ssid')
         psk = req.form.get('psk')
+
+        c = alarm.config
+        c['muted'] = req.form.get('muted')
+        c['proximity_dist'] = req.form.get('proximity_dist')
+        c['tcpa_time'] = req.form.get('tcpa_time')
+        c['tcpa_dist'] = req.form.get('tcpa_dist')
+
         print('ssid', ssid, psk)
-    print('ssid2', ssid, psk)
     return Template('index.html').render(ssid=ssid, psk=psk)
 
 async def serve():
@@ -34,6 +43,33 @@ async def serve():
         print("CAUGHT EXCEPTION server!!", e)
         import machine
         machine.reset()
+
+nmea_lines = {}
+rotations = 3 # messages will timeout after 3 rotations
+nmea_messages = list(map(lambda x : {}, range(rotations)))
+current5 = rotations
+
+def ais_data(ais_data, nemas):
+    # store each unique mmsi and message type
+    key = (ais_data['message_type'], ais_data['mmsi'])
+    nmea_lines[key] = nemas # store nmea messages
+    for rotation in range(1, rotations):
+        if key in nmea_messages:
+            del nmea_messages[rotation][key] # unmark old entree
+    nmea_messages[0][key] = True # mark as most recent
+
+    # find which 5 minute index we are currently
+    minute5 = ais_data['ticks_ms'] / 1000 / 60 / 5
+    global current5
+    if minute5 > current5:  # if we rolled over?
+        current5 = minute5
+        rkeys = nmea_messages.pop()
+        nmea_messages = [{} + nmea_messages]
+        for key in rkeys:
+            del nmea_lines[key] # remove stale messages
+
+def gps_data(gps_data):
+    pass
 
 # for testing
 def main():

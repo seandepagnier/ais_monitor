@@ -33,34 +33,65 @@ uart1 = machine.UART(1, baudrate=4800, tx=machine.Pin(4), rx=machine.Pin(5))
 uart1.init(bits=8, parity=None, stop=1, timeout=0)
 
 idle_per = 100
+
+
+nearest_ships = {}
+def update_nearest(ais_data):
+    if not 'dist' in ais_data: # if target distance can be is calculated (by alarm compute)
+        return
+    dist = ais_data['dist']
+    if dist >= 10: # dont care about ships further than 10 miles
+                  # only keep track of 5 nearest ships for LED flashing calculation
+        return
+
+    mmsi = ais_data['mmsi']
+    if not mmsi in nearest_ships and len(nearest_ships) >= 5:
+        # nearest ships list full, compute farthest ship in nearest ships list
+        furthest = 0, None
+        for ship in nearest_ships:
+            furthest = max(furthest[0], nearest_ships[ship][0]), ship
+        if dist > furthest[0]:
+            return # further than furthest near ship, abort
+        del nearest_ships[furthest[1]]
+    # update nearest ship list
+    nearest_ships[mmsi] = dist, t / 1000
+
 async def iteration():
     gps_data = None
     gps_time = time.ticks_ms()
-    ships = {}
     ships_led_time = 0
     mute_toggle_time = time.ticks_ms()
-    muted = False
 
     while True:
         t = time.ticks_ms()
         # receive ais data
-        ais_line = non_blocking_readline(uart0)
-        if ais_line:
+        while True:
+            ais_line = non_blocking_readline(uart0)
+            if not ais_line:
+                break
             await wireless.write_nmea(ais_line)
-            ais_data = decode_ais(ais_line)
+            try:
+                ais_data, nemas = decode_ais(ais_line)
+            except Exception as e:
+                print('failed decoding ais data', line, e)
+                ais_data = False
             if ais_data:
-                ships[ais_data['mmsi']] = ais_data
+                web.ais_data(ais_data, nemas)
                 leds.on_timeout('ais')
                 alarm.compute(gps_data, ais_data)
+                update_nearest(ais_data)
 
         # receive gps data
-        gps_line = non_blocking_readline(uart1)
-        if gps_line:
+        while True:
+            gps_line = non_blocking_readline(uart1)
+            if not gps_line:
+                break
             await wireless.write_nmea(gps_line)
             gps_data = decode_gps(gps_line)
             if gps_data:
                 leds.on_timeout('gps', 10)
                 gps_time = time.ticks_ms()
+            web.gps_data(gps_data)
 
         # if no gps fix in 30 seconds, alarm!
         if t - gps_time > 30000:
@@ -70,24 +101,24 @@ async def iteration():
         # once per second for 1 mile,  once every 10 seconds if 10 miles
         if t > ships_led_time:
             mindist = 10
-            for mmsi in list(ships):
-                ship = ships[mmsi]
-                t0, ts = ship['ts']
-                if t - t0 > 600:  # timeout after 10 minutes
-                    del ships[mmsi]
-                elif 'dist' in ship:
-                    dist = ship['dist']
-                    mindist = min(mindist, dist)
+            for mmsi in list(nearest_ships):
+                dist, shipt = nearest_ships[mmsi]
+                if t - shipt > 600:  # timeout nearest ships after 10 minutes
+                    del nearest_ships[mmsi] # remove ship
+                else:
+                    mindist = min(mindist, dist) # find nearest of nearest ships
             if mindist < 10:
-                leds.on_timeout('ships')
-                ships_led_time = t+mindist*1000
+                leds.on_timeout('ships') # flash ships LED
+                # recompute flash period based on how far the nearest ship is
+                ships_led_time = t+mindist*1000 # in milliseconds
 
         # check mute button to toggle mute function
         if not mute_button.value():
             if t-mute_toggle_time > 1:
-                muted = not muted
+                muted = alarm.config['muted']
+                alarm.config['muted'] = not muted
                 mute_toggle_time = t
-                leds.value('mute', muted)
+                leds.value('mute', not muted)
 
         # turn off leds that timed out
         leds.timeout(t)

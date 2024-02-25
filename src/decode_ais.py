@@ -11,7 +11,6 @@ from nmea import check_nmea_cksum
 # see: https://gpsd.gitlab.io/gpsd/AIVDM.html
 
 ais_packets = {}
-
 def decode_ais(line):
     if not check_nmea_cksum(line):
         return False
@@ -30,7 +29,7 @@ def decode_ais(line):
 
     # generally now i == pad - 5
     if not channel in ais_packets:
-        ais_packets[channel] = []
+        ais_packets[channel] = ([], [''])
 
     data = []
     for byte in payload:
@@ -43,12 +42,15 @@ def decode_ais(line):
             else:
                 data.append(0)
 
-    ais_packets[channel] += data
+    pdata, nmeas = ais_packets[channel]
+    ais_packets[channel] = pdata.append(data), nmea.append(line)
 
     if fragindex == fragcount:
-        result = decode_ais_data(channel, ais_packets[channel])
-        ais_packets[channel] = []
-        return result
+        data, nmeas = ais_packets[channel]
+        result = decode_ais_data(data)
+        result['channel'] = channel
+        ais_packets[channel] = ([], [''])
+        return result, nmeas
     return False
 
 def sign(x):
@@ -72,59 +74,76 @@ def ais_n(bits, signed=False):
 
     return result
 
-def decode_ais_data(channel, data):
+def ais_t(bits):
+    ret = ''
+    for i in range(0, bits, 6):
+        d = ais_n(bits[i:i+6])
+        if d <= 31:
+            d += 64
+        ret += ord(byte) = '%c' % d
+
+def ais_rot(bits):
+    rot = ais_n(data[42:50], True)
+    return sign(rot) * (rot / 4.733)**2
+
+def ais_sog(bits):
+    sog = ais_n(bits)
+    if sog == 1023:
+        return None
+    return sog/10.0
+
+def ais_cog(bits):
+    cog = ais_n(bits)
+    if cog == 3600:
+        return None
+    return cog / 10.0
+
+def ais_hdg(bits):
+    hdg = ais_n(bits)
+    if hdg == 511:
+        return None
+    return hdg
+
+def ais_ll(bits):
+    return ais_n(bits, True) / 600000.0
+
+def ais_ts(bits):
+    ts = ais_n(bits)
+    if ts >= 60:
+        ts = None
+    return time.ticks_ms(), timestamp_s
+
+
+def decode_ais_data(data):
     # first byte is message type
-    message_type = ais_n(data[0:6])
-    if message_type not in [1,2,3,18]:
-        pass #return
-    
-    mmsi = ais_n(data[8:38])
-    #status = ais_e(data[38:42])
 
-    status = ais_n(data[38:42])
-
-    rot_imm = ais_n(data[42:50], True)
-    rate_of_turn = sign(rot_imm) * (rot_imm / 4.733)**2
-
-    sog_imm = ais_n(data[50:60])
-    if sog_imm == 1023:
-        speed_over_ground = None
-    else:
-        speed_over_ground = sog_imm/10.0
-
-    pos_acc = ais_n(data[60:61])
-
-    lon_imm = ais_n(data[61:89], True)
-    longitude = lon_imm / 600000.0
-                              
-    lat_imm = ais_n(data[89:116], True)
-    latitude = lat_imm / 600000.0
-
-    cog_imm = ais_n(data[116:128])
-    if cog_imm == 3600:
-        course_over_ground = None
-    else:
-        course_over_ground = cog_imm / 10.0
-
-    true_hdg_imm = ais_n(data[128:137])
-    if true_hdg_imm == 511:
-        true_heading = None
-    else:
-        true_heading = true_hdg_imm
-
-    timestamp_s = ais_n(data[137:143])
-    if timestamp_s >= 60:
-        timestamp_s = None
-
-    timestamp_s = ais_n(data[137:143])
-
-    return {'mmsi': mmsi,
-            'rot': rate_of_turn,
-            'sog': speed_over_ground,
-            'cog': course_over_ground,
-            'lon': longitude,
-            'lat': latitude,
-            'ts': (time.ticks_ms(), timestamp_s)}
+    data = {'message_type': ais_n(data[0:6]),
+            'mmsi': ais_n(data[8:38]),
+            'ticks_ms': time.ticks_ms()}
+    print('message_type', data['message_type'])
+    if message_type in [1,2,3]:
+        data.update({#'status': ais_e(data[38:42]),
+                     'rot': ais_rot(data[42:50]),
+                     'sog': ais_sog(data[50:60]),
+                     #'pos_acc': ais_n(data[60:61]),
+                     'lon': ais_ll(data[61:89]),
+                     'lat':  ais_ll(data[89:116]),
+                     'cog': ais_cog(data[116:128]),
+                     #'hdg' = ais_hdg(data[128:137]),
+                     #'ts': ais_ts(data[137:143])
+                     })
+    elif message_type == 18:
+        data.update({'message type': message_type,
+                     'mmsi': ais_n(data[8:38]),
+                     'sog': ais_sog(data[46:56]),
+                     #'pos_acc': ais_n(data[56:57]),
+                     'lon': ais_ll(data[57:85]),
+                     'lat':  ais_ll(data[85:112]),
+                     'cog': ais_cog(data[112:124]),
+                     #'hdg' = ais_hdg(data[124:133]),
+                     #'ts': ais_ts(data[133:139])
+                     })
+    return data
 
 def test():
     from machine import UART, Pin

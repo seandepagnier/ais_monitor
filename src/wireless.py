@@ -35,7 +35,7 @@ responder.advertise("_nmea", "_tcp", port=nmea_port)
 writers = []
 async def serve_nmea():
     async def handle_request(reader, writer):
-        print('handle request', reader, writer)
+        print('nmea client connected', writer)
         writers.append(writer)
         while writer in writers:
             try:
@@ -44,7 +44,7 @@ async def serve_nmea():
             except Exception as e:
                 break
 
-        print('done with writer', writers)
+        print('nmea client lost', writer)
         writers.remove(writer)
         await writer.aclose()
 

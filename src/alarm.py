@@ -9,6 +9,11 @@ import math, time
 
 from sound import play_mp3
 
+config = {'proximity_dist': 1,
+          'tcpa_time': 10,
+          'tcpa_dist': 3,
+          'muted': False}
+
 # 1 = target within 1 mile
 # 2 = potential target approaching
 # 3 = gps failure
@@ -22,6 +27,9 @@ def alarm(index):
     alarmtime = t
     
     print("ALARM", index)
+    if config['muted']:
+        return
+    
     if index == 1:
         play_mp3('slow.mp3')
     else:
@@ -56,14 +64,16 @@ def simple_xy(lat1, lon1, lat2, lon2):
 # from gps data for boat, and ais position data, determine if a collision is imminent
 # if so, sound an alarm
 def compute(gps_data, ais_data):
-    if not gps_data:
+    if not gps_data or not 'sog' in ais_data:
         return
 
     # now compute cpa and tcpa
     sog = gps_data['sog']
     cog = gps_data['cog']
     asog = ais_data['sog']
-    acog = ais_data['cog'] + ais_data['rot']/60*5
+    acog = ais_data['cog']
+    if 'rot' in ais_data:
+        acog += ais_data['rot']/60*5
 
     # x and y in relative distance in nautical miles to target
     x, y = simple_xy(gps_data['latitude'], gps_data['longitude'],
@@ -71,11 +81,8 @@ def compute(gps_data, ais_data):
 
     dist = hypot(x, y)
     ais_data['dist'] = dist
-    if dist < 1: # target is < 1 mile away, make alarm
+    if dist < config['proximity_dist']: # target is < 1 mile away, make alarm
         alarm(1)
-
-    if dist > 10: # more than 10 miles, no alarm
-        return
 
     # velocity vectors in x, y
     bvx, bvy = sog*sind(cog), sog*cosd(cog)
@@ -104,10 +111,10 @@ def compute(gps_data, ais_data):
     if t < -30:  # tcpa is more than 30 seconds in past, no alarm
         return
 
-    if t > 1200: # tcpa is more than 10 minutes in future, no alarm
+    if t > 60*config['tcpa_time']: # tcpa is more than 10 minutes in future, no alarm
         return
 
-    if d > 3: # cpa is more than 3 miles away, no alarm
+    if d > config['tcpa_dist']: # cpa is more than 3 miles away, no alarm
         return
     
     # conditions allow for alarm
