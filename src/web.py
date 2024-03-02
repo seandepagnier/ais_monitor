@@ -7,25 +7,65 @@
 
 
 import asyncio
-from microdot import Microdot, Response
+from microdot import Microdot, Response, send_file
+from microdot.websocket import with_websocket
 from microdot.utemplate import Template
 
+import wireless
 import alarm
 
 app = Microdot()
 
+rotations = 3 # messages will timeout after 3 rotations
+nmea_messages = list(map(lambda x : {}, range(rotations)))
+last_gps_nmea = None
+current5 = rotations
+
 Response.default_content_type = 'text/html'
 
-ssid="mars"
-psk="rmyu030/"
+
+@app.get('/ais_plot.js')
+async def ais_plot(request):
+    return send_file('/static/ais_plot.js')
+
+@app.get('/decode_ais.js')
+async def decode_ais(request):
+    return send_file('/static/decode_ais.js')
+
+@app.get('/ais_target_list.js')
+async def ais_target_list(request):
+    return send_file('/static/ais_target_list.js')
+
+@app.get('/ship.png')
+async def ship_png(request):
+    return send_file('/static/ship.png')
+
+websockets = []
+
+@app.route('/ws')
+@with_websocket
+async def websocket(request, ws):
+    print('got new websocket', ws, request)
+    websockets.append(ws)
+    # send backlog of recent unique nmea messages to new connections
+    if last_gps_nmea:
+        ws.send(last_gps_nmea)
+    for nmeas in nmea_messages:
+        for nmea in nmeas:
+            ws.send(nmea)
+    while True:
+        data = await ws.receive()
+
+@app.get('/favicon.ico')
+async def favicon(request):
+    return send_file('/static/favicon.ico')
 
 @app.route('/', methods=['GET', 'POST'])
 async def index(req):
-    global ssid, psk
     name = None
     if req.method == 'POST':
-        ssid = req.form.get('ssid')
-        psk = req.form.get('psk')
+        wireless.ssid = req.form.get('ssid')
+        wireless.psk = req.form.get('psk')
 
         c = alarm.config
         c['muted'] = req.form.get('muted')
@@ -34,7 +74,7 @@ async def index(req):
         c['tcpa_dist'] = req.form.get('tcpa_dist')
 
         print('ssid', ssid, psk)
-    return Template('index.html').render(ssid=ssid, psk=psk)
+    return Template('index.html').render(ssid=wireless.ssid, psk=wireless.psk)
 
 async def serve():
     try:
@@ -44,32 +84,34 @@ async def serve():
         import machine
         machine.reset()
 
-nmea_lines = {}
-rotations = 3 # messages will timeout after 3 rotations
-nmea_messages = list(map(lambda x : {}, range(rotations)))
-current5 = rotations
-
-def ais_data(ais_data, nemas):
+async def ais_data(ais_data, nmeas):
+    for nmea in nmeas:
+        for ws in list(websockets):
+            try:
+                await ws.send(nmea)
+            except Exception as e:
+                print('except sending to websocket', e, ws)
+                websockets.remove(ws)
+                
     # store each unique mmsi and message type
     key = (ais_data['message_type'], ais_data['mmsi'])
-    nmea_lines[key] = nemas # store nmea messages
     for rotation in range(1, rotations):
         if key in nmea_messages:
-            del nmea_messages[rotation][key] # unmark old entree
-    nmea_messages[0][key] = True # mark as most recent
+            del nmea_messages[rotation][key] # remove old entree
+    nmea_messages[0][key] = nmeas # store most recent
 
     # find which 5 minute index we are currently
     minute5 = ais_data['ticks_ms'] / 1000 / 60 / 5
     global current5
     if minute5 > current5:  # if we rolled over?
         current5 = minute5
-        rkeys = nmea_messages.pop()
-        nmea_messages = [{} + nmea_messages]
-        for key in rkeys:
-            del nmea_lines[key] # remove stale messages
+        nmea_messages.pop() # remove stale messages
+        nmea_messages.insert(0, {})
 
-def gps_data(gps_data):
-    pass
+def gps_data(nmea):
+    global last_gps_nmea
+    last_gps_nmea = gps_data
+
 
 # for testing
 def main():
@@ -77,7 +119,7 @@ def main():
     #Connect to WLAN
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
-    wlan.connect(ssid, psk)
+    wlan.connect(wireless.ssid, wireless.psk)
 
     while not wlan.isconnected():
         print("connecting....", wlan.status())
@@ -85,7 +127,7 @@ def main():
     print(wlan.ifconfig())
 
     ap = network.WLAN(network.AP_IF)
-    ap.config(essid='picow', password='encryptme')
+    ap.config(ssid='picow', password='encryptme')
     ap.active(True)
     while ap.active() == False:
         pass

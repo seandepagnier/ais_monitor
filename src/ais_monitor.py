@@ -34,20 +34,17 @@ uart1.init(bits=8, parity=None, stop=1, timeout=0)
 
 idle_per = 100
 
-
 nearest_ships = {}
 def update_nearest(ais_data):
     if not 'dist' in ais_data: # if target distance can be is calculated (by alarm compute)
         return
     dist = ais_data['dist']
     if dist >= 10: # dont care about ships further than 10 miles
-                  # only keep track of 5 nearest ships for LED flashing calculation
         return
 
-    mmsi = ais_data['mmsi']
+    mmsi = ais_data['mmsi'] # only keep track of 5 nearest ships for LED flashing calculation
     if not mmsi in nearest_ships and len(nearest_ships) >= 5:
-        # nearest ships list full, compute farthest ship in nearest ships list
-        furthest = 0, None
+        furthest = 0, None # nearest ships list full, compute farthest ship in nearest ships list
         for ship in nearest_ships:
             furthest = max(furthest[0], nearest_ships[ship][0]), ship
         if dist > furthest[0]:
@@ -71,15 +68,18 @@ async def iteration():
                 break
             await wireless.write_nmea(ais_line)
             try:
-                ais_data, nemas = decode_ais(ais_line)
+                ais_data, nmeas = decode_ais(ais_line)
+                print('decoded', ais_data)
             except Exception as e:
-                print('failed decoding ais data', line, e)
+                import traceback
+                print(traceback.format_exc())
+                print('failed decoding ais data', ais_line, e)
                 ais_data = False
             if ais_data:
-                web.ais_data(ais_data, nemas)
                 leds.on_timeout('ais')
                 alarm.compute(gps_data, ais_data)
                 update_nearest(ais_data)
+                await web.ais_data(ais_data, nmeas)
 
         # receive gps data
         while True:
@@ -91,7 +91,7 @@ async def iteration():
             if gps_data:
                 leds.on_timeout('gps', 10)
                 gps_time = time.ticks_ms()
-            web.gps_data(gps_data)
+                web.gps_data(gps_line)
 
         # if no gps fix in 30 seconds, alarm!
         if t - gps_time > 30000:

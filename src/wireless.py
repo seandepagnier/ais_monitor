@@ -76,14 +76,18 @@ async def maintain_connection():
         if not wlan.isconnected():
             while not wlan.isconnected():
                 s = wlan.status()
-                print('connecting...', s)
+                print('connecting...', s, time.ticks_ms() - t0)
                 if s == -1 or time.ticks_ms() - t0 > 10*1000:
+                    print('try connect...')
                     wlan.connect(ssid, psk)
+
+                if time.ticks_ms() - t0 > 20*1000:
+                    print('reset from timeout')
+                    machine.reset()
 
                 await asyncio.sleep(1)
             print('connected', wlan.ifconfig())
         await asyncio.sleep(3)
-    
 
 # for testing, simply serve ais messages on tcp
 def main():
@@ -101,8 +105,7 @@ def main():
                 await write_nmea(line)
                 print("read line", line.strip(), len(line))
             else:
-                await asyncio.sleep(1)
-    
+                await asyncio.sleep(1)    
     
     loop = asyncio.get_event_loop()
     loop.create_task(serve_nmea())

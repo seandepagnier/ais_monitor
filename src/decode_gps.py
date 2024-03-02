@@ -14,17 +14,16 @@ def decode_gps(line):
         minutes = n - degrees
         return degrees + minutes*10/6
 
-    if not check_nmea_cksum(line):
+    if line[3:6] != 'RMC':
         return False
 
-    if line[3:6] != 'RMC':
+    if not check_nmea_cksum(line):
         return False
 
     try:
         data = line[7:len(line)-3].split(',')
         if data[1] == 'V':
             return False
-        gps = {}
 
         lat = degrees_minutes_to_decimal(float(data[2]))
         if data[3] == 'S':

@@ -9,6 +9,8 @@
 audio = None
 decoder = None
 
+muted=True
+
 # try to load audio core
 try:
     import board
@@ -34,7 +36,7 @@ def play_sound(filename):
 
 def play_mp3(filename):
     if muted:
-        print('muted')
+        print('muted, not playing', filename)
         return
 
     if not decoder:

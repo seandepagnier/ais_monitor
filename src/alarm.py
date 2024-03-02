@@ -76,8 +76,8 @@ def compute(gps_data, ais_data):
         acog += ais_data['rot']/60*5
 
     # x and y in relative distance in nautical miles to target
-    x, y = simple_xy(gps_data['latitude'], gps_data['longitude'],
-                     ais_data['latitude'], ais_data['longitude'])
+    x, y = simple_xy(gps_data['lat'], gps_data['lon'],
+                     ais_data['lat'], ais_data['lon'])
 
     dist = hypot(x, y)
     ais_data['dist'] = dist

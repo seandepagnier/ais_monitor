@@ -10,13 +10,19 @@ from nmea import check_nmea_cksum
 
 # see: https://gpsd.gitlab.io/gpsd/AIVDM.html
 
+def getticks():
+    try:
+        return time.ticks_ms()
+    except:
+        return time.monotonic()/1000
+
 ais_packets = {}
 def decode_ais(line):
+    if line[3:6] != 'VDM':
+        return False
     if not check_nmea_cksum(line):
         return False
     
-    if line[3:6] != 'VDM':
-        return False
     try:
         data = line[7:len(line)-3].split(',')
         fragcount = int(data[0])
@@ -29,7 +35,7 @@ def decode_ais(line):
 
     # generally now i == pad - 5
     if not channel in ais_packets:
-        ais_packets[channel] = ([], [''])
+        ais_packets[channel] = ([], [])
 
     data = []
     for byte in payload:
@@ -43,13 +49,14 @@ def decode_ais(line):
                 data.append(0)
 
     pdata, nmeas = ais_packets[channel]
-    ais_packets[channel] = pdata.append(data), nmea.append(line)
+    pdata += data
+    nmeas.append(line)
 
     if fragindex == fragcount:
         data, nmeas = ais_packets[channel]
         result = decode_ais_data(data)
         result['channel'] = channel
-        ais_packets[channel] = ([], [''])
+        ais_packets[channel] = ([], [])
         return result, nmeas
     return False
 
@@ -75,15 +82,18 @@ def ais_n(bits, signed=False):
     return result
 
 def ais_t(bits):
-    ret = ''
+    result = ''
     for i in range(0, bits, 6):
         d = ais_n(bits[i:i+6])
+        if d == 0:
+            break
         if d <= 31:
             d += 64
-        ret += ord(byte) = '%c' % d
+        result += '%c' % d
+    return result;
 
 def ais_rot(bits):
-    rot = ais_n(data[42:50], True)
+    rot = ais_n(bits, True)
     return sign(rot) * (rot / 4.733)**2
 
 def ais_sog(bits):
@@ -105,24 +115,25 @@ def ais_hdg(bits):
     return hdg
 
 def ais_ll(bits):
-    return ais_n(bits, True) / 600000.0
+    return round(ais_n(bits, True) / 600000.0, 8)
 
 def ais_ts(bits):
     ts = ais_n(bits)
     if ts >= 60:
         ts = None
-    return time.ticks_ms(), timestamp_s
+    return getticks(), ts
 
 
 def decode_ais_data(data):
     # first byte is message type
 
-    data = {'message_type': ais_n(data[0:6]),
-            'mmsi': ais_n(data[8:38]),
-            'ticks_ms': time.ticks_ms()}
-    print('message_type', data['message_type'])
+    message_type = ais_n(data[0:6]);
+    d = {'message_type': message_type,
+         'mmsi': ais_n(data[8:38]),
+         'ticks_ms': getticks()}
+    #print('message_type', d['message_type'])
     if message_type in [1,2,3]:
-        data.update({#'status': ais_e(data[38:42]),
+        d.update({#'status': ais_e(data[38:42]),
                      'rot': ais_rot(data[42:50]),
                      'sog': ais_sog(data[50:60]),
                      #'pos_acc': ais_n(data[60:61]),
@@ -131,21 +142,20 @@ def decode_ais_data(data):
                      'cog': ais_cog(data[116:128]),
                      #'hdg' = ais_hdg(data[128:137]),
                      #'ts': ais_ts(data[137:143])
-                     })
-    elif message_type == 18:
-        data.update({'message type': message_type,
-                     'mmsi': ais_n(data[8:38]),
-                     'sog': ais_sog(data[46:56]),
-                     #'pos_acc': ais_n(data[56:57]),
-                     'lon': ais_ll(data[57:85]),
-                     'lat':  ais_ll(data[85:112]),
-                     'cog': ais_cog(data[112:124]),
-                     #'hdg' = ais_hdg(data[124:133]),
-                     #'ts': ais_ts(data[133:139])
-                     })
-    return data
+        })
+    elif message_type in [18, 19]:
+        d.update({'sog': ais_sog(data[46:56]),
+                  #'pos_acc': ais_n(data[56:57]),
+                  'lon': ais_ll(data[57:85]),
+                  'lat':  ais_ll(data[85:112]),
+                  'cog': ais_cog(data[112:124]),
+                  #'hdg' = ais_hdg(data[124:133]),
+                  #'ts': ais_ts(data[133:139])
+        })
+        
+    return d
 
-def test():
+def test1():
     from machine import UART, Pin
     from non_blocking_readline import non_blocking_readline
     uart0 = UART(0, baudrate=38400, tx=Pin(0), rx=Pin(1))
@@ -163,7 +173,7 @@ def test():
         else:
             time.sleep(1)
 
-
+def test2():
     packets = ['!AIVDM,1,1,,B,13MARih000wbAbJP0kr23aSV0<0g,0*73',
                '!AIVDM,1,1,,A,13P>Hq0000wbF:pP0jIEdkNH0l0O,0*46',
                '!AIVDM,1,1,,A,13P>Hq0000wbF:lP0jI5dkNH0d0N,0*23',
@@ -174,8 +184,12 @@ def test():
                '!AIVDM,1,1,,A,33OhGr1001Ob;SvP1vKFoC@d0De:,0*3E',
                '!AIVDM,1,1,,B,13MARih000wbAatP0kkj3aRH06J`,0*67',
                '!AIVDM,1,1,,B,13P>Hq0000wbF:8P0jFEdkN20l0O,0*78']
-    ticks = time.ticks_ms()
+
+    packets = ['!AIVDM,1,1,,A,B52e9Eh00>`aAVUGfPWQ3wgQnDlb,0*4E']
+    ticks = getticks()
     for p in packets:
         print(decode_ais(p))
 
-    print('took', time.ticks_ms() - ticks, 'ms')
+    print('took', getticks() - ticks, 'ms')
+
+#test2()
