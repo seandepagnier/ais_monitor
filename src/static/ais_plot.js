@@ -12,263 +12,315 @@
 var canvas = document.getElementById('canvas');
 gl = canvas.getContext('webgl');
 
-//========== Defining and storing the geometry ==========
-
-/*
+// drawing radar rings
 var circle_vertices = [];
-for(var ang=0; ang<=360; ang+=9) {
+for(var ang=0; ang<=360; ang+=4) {
     var rang = Math.PI*2*ang/360;
     circle_vertices.push(Math.sin(rang));
     circle_vertices.push(Math.cos(rang));
 }
 
-// Create and store data into vertex buffer
 var circle_vertex_buffer = gl.createBuffer ();
 gl.bindBuffer(gl.ARRAY_BUFFER, circle_vertex_buffer);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(circle_vertices), gl.STATIC_DRAW);
 
-//=================== SHADERS =================== 
-
-var vertCode = 'attribute vec2 position;'+
-    'uniform mat4 Vmatrix;'+
-    'uniform mat4 Mmatrix;'+
-    'void main(void) { '+//pre-built function
-    'gl_Position = Vmatrix*Mmatrix*vec4(position,0,1);' +
-    'gl_PointSize = 3.0;'+
+var vertCode =
+    'attribute vec2 position;'+
+    'uniform float scale;'+
+    'void main(void) { '+
+    'gl_Position = vec4(scale*position,0,1);' +
     '}';
 
 var fragCode = 'precision mediump float;'+
-    'uniform vec3 vColor;'+
     'void main(void) {'+
-        'gl_FragColor = vec4(vColor, 1.);'+
+    'gl_FragColor = vec4(1, 1, 1, 1.);'+
     '}';
 
-var vertShader = gl.createShader(gl.VERTEX_SHADER);
-gl.shaderSource(vertShader, vertCode);
-gl.compileShader(vertShader);
+function make_program(vert, frag) {
+    var vertShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertShader, vert);
+    gl.compileShader(vertShader);
 
-var fragShader = gl.createShader(gl.FRAGMENT_SHADER);
-gl.shaderSource(fragShader, fragCode);
-gl.compileShader(fragShader);
+    var fragShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragShader, frag);
+    gl.compileShader(fragShader);
 
-var shaderprogram = gl.createProgram();
-gl.attachShader(shaderprogram, vertShader);
-gl.attachShader(shaderprogram, fragShader);
-gl.linkProgram(shaderprogram);
+    var program = gl.createProgram();
+    gl.attachShader(program, vertShader);
+    gl.attachShader(program, fragShader);
+    gl.linkProgram(program);
+    return program;
+}
 
-//======== Associating attributes to vertex shader =====
-var _Vmatrix = gl.getUniformLocation(shaderprogram, "Vmatrix");
-var _Mmatrix = gl.getUniformLocation(shaderprogram, "Mmatrix");
+radarringsprogram = make_program(vertCode, fragCode);
 
-var _color = gl.getUniformLocation(shaderprogram, "vColor");
+function draw_radar_rings() {
+    gl.useProgram(radarringsprogram);
+    var _position = gl.getAttribLocation(radarringsprogram, "position");
+    gl.enableVertexAttribArray(_position);
 
-var _position = gl.getAttribLocation(shaderprogram, "position");
-gl.enableVertexAttribArray(_position);
+    var _scale = gl.getUniformLocation(radarringsprogram, "scale");
+    gl.bindBuffer(gl.ARRAY_BUFFER, circle_vertex_buffer);
+    gl.vertexAttribPointer(_position, 2, gl.FLOAT, false,0,0);
 
-gl.useProgram(shaderprogram);
+    gl.uniform1f(_scale, 1);
+    gl.drawArrays(gl.LINE_LOOP, 0, circle_vertices.length/2);
 
-//==================== MATRIX ====================== 
-
-var mo_matrix = [ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 ];
-var view_matrix = [ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 ];
-
-//view_matrix[14] = view_matrix[14]+3;
-
-*/
-//=================== Drawing =================== 
-
-let scale = 1;
-function scale_matrix(scale) {
-    return [ scale,0,0,0, 0,scale,0,0, 0,0,scale,0, 0,0,0,1 ];
+    gl.uniform1f(_scale, .5);
+    gl.drawArrays(gl.LINE_LOOP, 0, circle_vertices.length/2);
 }
 
 
-/* Drawing ships */
-
-var image = new Image();
-image.src = 'http://' + location.host + '/ship.png';
-image.onload = function() {
-    render(image);
-};
-
-
-function render(image) {
+// Drawing ships
 var vertCode =
-'attribute vec2 a_position;' +
-'attribute vec2 a_texCoord;' +
-'uniform vec2 u_resolution;' +
-'varying vec2 v_texCoord;' +
-'void main() {' +
-'   vec2 zeroToOne = a_position / u_resolution;' +
-'   vec2 zeroToTwo = zeroToOne * 1.0;' +
-'   vec2 clipSpace = zeroToTwo - 0.0;' +
-'   gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);' +
-'   v_texCoord = a_texCoord;' +
-'}'
+    'attribute vec2 a_texCoord;' +
+    'uniform vec2 u_pos;' +
+    'uniform vec2 u_scale;' +
+    'uniform mat2 Mmatrix;'+
+    'varying vec2 v_texCoord;' +
+    'void main() {' +
+    '   vec2 coord = a_texCoord*u_scale*vec2(2,2) - u_scale;' +
+    '   gl_Position = vec4(u_pos + Mmatrix*coord, 0, 1);' +
+    '   v_texCoord = a_texCoord;' +
+    '}';
 
 var fragCode =
-'precision mediump float;' +
-'uniform sampler2D u_image;' +
-'varying vec2 v_texCoord;' +
-'void main() {' +
-'   gl_FragColor = texture2D(u_image, v_texCoord).rgba;' +
-'}'
+    'precision mediump float;' +
+    'uniform sampler2D u_image;' +
+    'varying vec2 v_texCoord;' +
+    'void main() {' +
+    '   gl_FragColor = texture2D(u_image, v_texCoord).rgba;' +
+    '}';
 
-var vertShader = gl.createShader(gl.VERTEX_SHADER);
-gl.shaderSource(vertShader, vertCode);
-gl.compileShader(vertShader);
-
-var fragShader = gl.createShader(gl.FRAGMENT_SHADER);
-gl.shaderSource(fragShader, fragCode);
-gl.compileShader(fragShader);
-
-var program = gl.createProgram();
-gl.attachShader(program, vertShader);
-gl.attachShader(program, fragShader);
-gl.linkProgram(program);
-
-  // look up where the vertex data needs to go.
-  var positionLocation = gl.getAttribLocation(program, "a_position");
-  var texcoordLocation = gl.getAttribLocation(program, "a_texCoord");
-
-  // Create a buffer to put three 2d clip space points in
-  var positionBuffer = gl.createBuffer();
-
-  // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  // Set a rectangle the same size as the image.
-  setRectangle(gl, 0, 0, image.width, image.height);
-
-  // provide texture coordinates for the rectangle.
-  var texcoordBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-      0.0,  0.0,
-      1.0,  0.0,
-      0.0,  1.0,
-      0.0,  1.0,
-      1.0,  0.0,
-      1.0,  1.0,
-  ]), gl.STATIC_DRAW);
-
-  // Create a texture.
-  var texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-
-  // Set the parameters so we can render any size image.
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-
-  // Upload the image into the texture.
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-
-  // lookup uniforms
-  var resolutionLocation = gl.getUniformLocation(program, "u_resolution");
-
-    //webglUtils.resizeCanvasToDisplaySize(gl.canvas);
-
-  // Tell WebGL how to convert from clip space to pixels
-  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-
-  // Clear the canvas
-  gl.clearColor(0, 0, 0, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-
-  // Tell it to use our program (pair of shaders)
-  gl.useProgram(program);
-
-  // Turn on the position attribute
-  gl.enableVertexAttribArray(positionLocation);
-
-  // Bind the position buffer.
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-
-  // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-  var size = 2;          // 2 components per iteration
-  var type = gl.FLOAT;   // the data is 32bit floats
-  var normalize = false; // don't normalize the data
-  var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
-  var offset = 0;        // start at the beginning of the buffer
-  gl.vertexAttribPointer(positionLocation, size, type, normalize, stride, offset);
-
-  // Turn on the texcoord attribute
-  gl.enableVertexAttribArray(texcoordLocation);
-
-  // bind the texcoord buffer.
-  gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
-
-  // Tell the texcoord attribute how to get data out of texcoordBuffer (ARRAY_BUFFER)
-  var size = 2;          // 2 components per iteration
-  var type = gl.FLOAT;   // the data is 32bit floats
-  var normalize = false; // don't normalize the data
-  var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
-  var offset = 0;        // start at the beginning of the buffer
-  gl.vertexAttribPointer(texcoordLocation, size, type, normalize, stride, offset);
-
-  // set the resolution
-  gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
-
-  // Draw the rectangle.
-  var primitiveType = gl.TRIANGLES;
-  var offset = 0;
-  var count = 6;
-  gl.drawArrays(primitiveType, offset, count);
-}
-
-function setRectangle(gl, x, y, width, height) {
-  var x1 = x;
-  var x2 = x + width;
-  var y1 = y;
-  var y2 = y + height;
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-     x1, y1,
-     x2, y1,
-     x1, y2,
-     x1, y2,
-     x2, y1,
-     x2, y2,
-  ]), gl.STATIC_DRAW);
-}
+shipprogram = make_program(vertCode, fragCode);
 
 
+// look up where the vertex data needs to go.
+var texcoordLocation = gl.getAttribLocation(shipprogram, "a_texCoord");
+
+// provide texture coordinates for the rectangle.
+var texcoordBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+    0.0,  0.0, 1.0,  0.0, 0.0,  1.0, 0.0,  1.0, 1.0,  0.0, 1.0,  1.0,
+]), gl.STATIC_DRAW);
 
 
+// lines for closest point of approach
+var vertCode =
+    'attribute vec2 position;'+
+    'void main(void) { '+
+    'gl_Position = vec4(position,0,1);' +
+    'gl_PointSize = 4.0;' +
+    '}';
 
-var animate = function(time) {
+var predfragCode = 'precision mediump float;'+
+    'uniform vec2 resolution;'+
+    'uniform vec2 center;'+
+    'void main(void) {'+
+    'gl_FragColor = vec4(1, 0, .3, 1);'+
+    'vec2 uv = vec2(2,2)*gl_FragCoord.xy/resolution - vec2(1,1) - center;'+
+    'float uv_mod = mod(sqrt(uv.x*uv.x + uv.y*uv.y)*15.0, 1.0);'+
+    'if(uv_mod < 0.7)'+
+    '    discard;'+
+    '}';
 
-    gl.clearColor(0, 0, 0, 1);
-    gl.viewport(0.0, 0.0, canvas.width, canvas.height);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+var cpafragCode = 'precision mediump float;'+
+    'uniform vec2 resolution;'+
+    'uniform vec2 center;'+
+    'void main(void) {'+
+    'gl_FragColor = vec4(.1, 1, .2, 1);'+
+    'vec2 uv = vec2(2,2)*gl_FragCoord.xy/resolution - vec2(1,1) - center;'+
+    'float uv_mod = mod(sqrt(uv.x*uv.x + uv.y*uv.y)*25.0, 1.0);'+
+    'if(uv_mod < 0.7)'+
+    '    discard;'+
+    '}';
 
-    //set model matrix to I4
-    view_matrix = scale_matrix(scale);
+var cpafragPointCode = 'precision mediump float;'+
+    'void main(void) {'+
+    'gl_FragColor = vec4(0, 1, .4, 1);'+
+    '}';
 
-    gl.uniformMatrix4fv(_Vmatrix, false, view_matrix);
 
-    mo_matrix = scale_matrix(1);
-    gl.uniformMatrix4fv(_Mmatrix, false, mo_matrix);
+predprogram = make_program(vertCode, predfragCode);
+cpaprogram = make_program(vertCode, cpafragCode);
+cpapointprogram = make_program(vertCode, cpafragPointCode);
 
-    gl.uniform3f(_color, 1, 1, 1);
+
+var pred_vertex_buffer = gl.createBuffer ();
+
+
+class ship {
+    constructor(path, scale) {
+        var image = new Image();
+        //ship.src = 'http://' + location.host + '/ship.png';
+        image.src = path;
+        this.scale = scale;
+        image.onload = () => {
+            // Create a texture.
+            var texture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            this.texture = texture;
+
+            // Set the parameters so we can render any size image.
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+            // Upload the image into the texture.
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        };
+    }
+
+    render(x, y, angle) {
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+
+        // Tell it to use our program (pair of shaders)
+        var program = shipprogram;
+        gl.useProgram(program);
+
+        var posLocation = gl.getUniformLocation(program, "u_pos");
+        gl.uniform2f(posLocation, x, y, angle);
+
+        var _Mmatrix = gl.getUniformLocation(program, "Mmatrix");
+        var rad = Math.PI/180*angle;
+        var s = Math.sin(rad);
+        var c = Math.cos(rad);
+        var mo_matrix = [ c, -s, -s, -c ]
+        gl.uniformMatrix2fv(_Mmatrix, false, mo_matrix);
+            
+        // set ship scale;
+        var scaleLocation = gl.getUniformLocation(program, "u_scale");
+        
+        gl.uniform2f(scaleLocation, this.scale[0], this.scale[1]);
     
-    gl.bindBuffer(gl.ARRAY_BUFFER, circle_vertex_buffer);
-    gl.vertexAttribPointer(_position, 2, gl.FLOAT, false,0,0);
-    gl.drawArrays(gl.LINE_LOOP, 0, circle_vertices.length/2);
+        gl.enableVertexAttribArray(texcoordLocation);
+        gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
+        gl.vertexAttribPointer(texcoordLocation, 2, gl.FLOAT, false, 0, 0);
 
-    mo_matrix = scale_matrix(.5);
-    gl.uniformMatrix4fv(_Mmatrix, false, mo_matrix);
-    
-    gl.bindBuffer(gl.ARRAY_BUFFER, circle_vertex_buffer);
-    gl.vertexAttribPointer(_position, 2, gl.FLOAT, false,0,0);
-    gl.drawArrays(gl.LINE_LOOP, 0, circle_vertices.length/2);
+        // Draw the rectangle.
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    window.requestAnimationFrame(animate);
+        // drawing prediction
+        gl.bindBuffer(gl.ARRAY_BUFFER, pred_vertex_buffer);
+        let predvertices = [x, y, x+s*2, y+c*2];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(predvertices), gl.DYNAMIC_DRAW);
+        
+        gl.useProgram(predprogram);
+
+        var _resolution = gl.getUniformLocation(predprogram, "resolution");
+        gl.uniform2f(_resolution, canvas.width, canvas.height);
+        var _center = gl.getUniformLocation(predprogram, "center");
+        gl.uniform2f(_center, x, y);
+        
+        var _position = gl.getAttribLocation(predprogram, "position");
+        gl.enableVertexAttribArray(_position);
+        gl.vertexAttribPointer(_position, 2, gl.FLOAT, false, 0, 0);
+        gl.drawArrays(gl.LINES, 0, 2);
+    }
 }
-//animate(0);
+
+cargoship = new ship('ship.png', [1/80., 1/12]);
+yacht = new ship('yacht.png', [1/100., 1/20.]);
+ownship = new ship('ownship.png', [1/50., 1/16.]);
+
+
+function cosd(angle) {
+    return Math.cos(angle*Math.PI/180);
+}
+
+function resolv(angle) {
+    while(angle > 180)
+        angle -= 360;
+    while(angle < -180)
+        angle += 360;
+    return angle;
+}
+
+function simple_xy(lat1, lon1, lat2, lon2) {
+    let x = cosd(lat1)*resolv(lon1-lon2) * 60;
+    let y = (lat1-lat2)*60; // 60 nautical miles per degree
+    return [x, y];
+}
 
 var range = document.getElementById('radar_range');
 
-range.addEventListener('change', () => {
-    scale = range.value;
-})
+var animate = function(time) {
+    setTimeout(animate, 100);
+
+    gl.clearColor(.17, .42, .51, 1);
+    gl.viewport(0.0, 0.0, canvas.width, canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    draw_radar_rings();
+
+    if(!last_gps)
+        return
+
+    glat = last_gps['lat'];
+    glon = last_gps['lon'];
+    gsog = last_gps['sog'];
+    gcog = last_gps['cog'];
+
+    ownship.render(0, 0, gcog);
+
+    let scale = range.value * 2;
+
+    Object.entries(ships).forEach(([mmsi,ship]) => {
+        let _ship = ship['channel'] == 'B' ? yacht : cargoship;
+        let slat = ship['lat'];
+        let slon = ship['lon'];
+        let cog = ship['cog'];
+        let sog = ship['sog'];
+        
+        let xy = simple_xy(glat, glon, slat, slon);
+        
+        let x = xy[0] / scale;
+        let y = -xy[1] / scale;
+        _ship.render(x, y, cog);
+
+        // render cpa
+        if('tcpa_h' in ship) {
+            let tcpa_h = ship['tcpa_h'];
+
+            let rad = Math.PI/180*gcog;
+            let gs = Math.sin(rad);
+            let gc = Math.cos(rad);
+            let gd = tcpa_h*gsog/scale;
+            
+            rad = Math.PI/180*cog;
+            let s = Math.sin(rad);
+            let c = Math.cos(rad);
+            let d = tcpa_h*sog/scale;
+            let cpavertices = [gs*gd, gc*gd, x+s*d, y+c*d];
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, pred_vertex_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cpavertices), gl.DYNAMIC_DRAW);
+        
+            gl.useProgram(cpaprogram);
+
+            var _resolution = gl.getUniformLocation(cpaprogram, "resolution");
+            gl.uniform2f(_resolution, canvas.width, canvas.height);
+            var _center = gl.getUniformLocation(cpaprogram, "center");
+            gl.uniform2f(_center, cpavertices[0], cpavertices[1]);
+        
+            var _position = gl.getAttribLocation(cpaprogram, "position");
+            gl.enableVertexAttribArray(_position);
+            gl.vertexAttribPointer(_position, 2, gl.FLOAT, false, 0, 0);
+            gl.drawArrays(gl.LINES, 0, 2);
+
+            gl.useProgram(cpapointprogram);
+
+            var _position = gl.getAttribLocation(cpapointprogram, "position");
+            gl.enableVertexAttribArray(_position);
+            gl.vertexAttribPointer(_position, 2, gl.FLOAT, false, 0, 0);
+            gl.drawArrays(gl.POINTS, 0, 2);
+        }
+    });
+
+
+    last_gps['cog'] += 2;
+}
+
+animate(0);

@@ -1,4 +1,4 @@
-{% args ssid, psk %}
+{% args config %}
 <!doctype html>
 <html>
   <head>
@@ -10,10 +10,10 @@
     <form method="POST">
       <p>
         Wireless Network SSID
-        <input type="text" name="ssid" value="{{ ssid }}" autofocus />
-        <input type="text" name="psk" value="{{ psk }}" />
+        <input type="text" name="ssid" />
+        <input type="text" name="psk" />
       </p>
-      <p><input type="checkbox" id="muted" >muted</input>
+      <p><input type="checkbox" id="mute">mute</input>
         <br>Proximity Alarm (alarm if any ship is closer in miles)
         <input type="number" id="proximity_dist" min="0" max="10" value=1 />
       </p>
@@ -21,13 +21,24 @@
         <input type="number" id="tcpa_time" min="0" max="50" value=10 >Minutes</input>
         <br>ship will pass within</input><input type="number" id="tcpa_dist" min="0" max="50" value=2 >Miles</input>
       </p>
+      <p>Anchor alarm radius
+      <p><input type="checkbox" id="anchor">anchor alarm</input>
+        <input type="number" id="anchor_alarm_radius" min="1" max="200" value=30 >Meters</input>
       <input type="submit" value="Submit" />
     </form>
     <br>
 
+    <script type="text/javascript">
+      let config = {{ config }}
+      for(name of config) {
+          let input = document.getElementById(name);
+          input.value = config[name];
+      }
+    </script>
+    
     <h1>AIS Radar</h1>
     <canvas width="600" height="600" id="canvas"></canvas>
-    <input type="number" id="radar_range" min="1" max="10" value=1 >Range</input>
+    <input type="number" id="radar_range" min="1" max="10" value=1 >Range in miles per ring</input>
     <script type="text/javascript" src="/ais_plot.js"></script>
     <br><h3>Own Ship
       <table id='ownship_table'>
@@ -36,7 +47,7 @@
           <td><div id='sog'>N/A</div></td>
           <td><div id='cog'>N/A</div></td>
           <td><div id='lat'>N/A</div></td>
-          <td><div id="lon">n/a</div></td>
+          <td><div id='lon'>N/A</div></td>
           <td><div id='timestamp'>N/A</div></td>
       </tr></table>
     <br><h3>AIS Targets

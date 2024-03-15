@@ -333,21 +333,21 @@ function decode_ais_data(data) {
     return {...data, ...d};
 }
 
+function sind(angle) {
+    return Math.sin(angle*Math.PI/180);
+}
+function cosd(angle) {
+    return Math.cos(angle*Math.PI/180);
+}
+
 function simple_xy(lat1, lon1, lat2, lon2) {
     let x = cosd(lat1)*resolv(lon1-lon2) * 60;
     let y = (lat1-lat2)*60; // 60 nautical miles per degree
-    return x, y;
+    return [x, y];
 }
 
 // compute distance, cpa and tcpa, and put into ais_data
 function compute(gps_data, ais_data) {
-    function sind(angle) {
-        return Math.sin(angle*Math.PI/180);
-    }
-    function sd(angle) {
-        return Math.cos(angle*Math.PI/180);
-    }
-
     if(!gps_data || !('sog' in ais_data))
         return
     let sog = gps_data['sog'];
@@ -379,6 +379,7 @@ function compute(gps_data, ais_data) {
     
     // time till closest point of approach is in hours, convert to seconds
     ais_data['tcpa'] = convertHoursToHMS(t);
+    ais_data['tcpa_h'] = t;
 }
 
 function test() {
@@ -392,7 +393,6 @@ function test() {
                '!AIVDM,1,1,,A,33OhGr1001Ob;SvP1vKFoC@d0De:,0*3E',
                '!AIVDM,1,1,,B,13MARih000wbAatP0kkj3aRH06J`,0*67',
                '!AIVDM,1,1,,B,13P>Hq0000wbF:8P0jFEdkN20l0O,0*78'];
-    packets = ['!AIVDM,1,1,,A,H52e9ElUCBD:0:<00000001H104t,0*08'];
     const start = Date.now();
     for(p of packets) {
         result = decode_ais(p);

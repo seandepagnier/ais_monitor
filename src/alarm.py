@@ -6,13 +6,9 @@
 # version 3 of the License, or (at your option) any later version.  
 
 import math, time
-
 from sound import play_mp3
+from config import config
 
-config = {'proximity_dist': 1,
-          'tcpa_time': 10,
-          'tcpa_dist': 3,
-          'muted': False}
 
 # 1 = target within 1 mile
 # 2 = potential target approaching
@@ -119,6 +115,17 @@ def compute(gps_data, ais_data):
     
     # conditions allow for alarm
     alarm(2)
+
+def anchor(gps_data):
+    if not config['anchor']:
+        return
+    try:
+        x, y = simple_xy(anchor_pos['lat'], anchor_pos['lon'],
+                         gps_data['lat'], gps_data['lon'])
+        dist = hypot(x, y) * 1852 # convert to meters
+        if dist > config['anchor_radius']:
+            alarm(3)
+    
 
 def ticks_ms():
     try:

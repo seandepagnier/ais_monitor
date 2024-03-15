@@ -10,9 +10,7 @@ import network
 import machine
 import asyncio
 
-ssid="mars"
-psk="rmyu030/"
-nmea_port = 20220
+from config import config
 
 #Connect to WLAN
 wlan = network.WLAN(network.STA_IF)
@@ -30,7 +28,7 @@ responder = Responder(
     host=lambda: "ais_monitor"
 )
 
-responder.advertise("_nmea", "_tcp", port=nmea_port)
+responder.advertise("_nmea", "_tcp", port=config['nmea_port'])
 
 writers = []
 async def serve_nmea():
@@ -74,12 +72,21 @@ async def maintain_connection():
     while True:
         t0 = time.ticks_ms()
         if not wlan.isconnected():
+
+            if config['ap']:
+                ap = network.WLAN(network.AP_IF)
+                ap.config(ssid='picow', password='encryptme')
+                ap.active(True)
+                while ap.active() == False:
+                    await asyncio.sleep(10
+
+            
             while not wlan.isconnected():
                 s = wlan.status()
                 print('connecting...', s, time.ticks_ms() - t0)
                 if s == -1 or time.ticks_ms() - t0 > 10*1000:
                     print('try connect...')
-                    wlan.connect(ssid, psk)
+                    wlan.connect(config['ssid'], config['psk'])
 
                 if time.ticks_ms() - t0 > 20*1000:
                     print('reset from timeout')
@@ -89,6 +96,9 @@ async def maintain_connection():
             print('connected', wlan.ifconfig())
         await asyncio.sleep(3)
 
+def reset():
+    wlan.disconnect()
+                                        
 # for testing, simply serve ais messages on tcp
 def main():
     from machine import UART, Pin

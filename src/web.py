@@ -12,7 +12,7 @@ from microdot.websocket import with_websocket
 from microdot.utemplate import Template
 
 import wireless
-import alarm
+import config
 
 app = Microdot()
 
@@ -22,23 +22,6 @@ last_gps_nmea = None
 current5 = rotations
 
 Response.default_content_type = 'text/html'
-
-
-@app.get('/ais_plot.js')
-async def ais_plot(request):
-    return send_file('/static/ais_plot.js')
-
-@app.get('/decode_ais.js')
-async def decode_ais(request):
-    return send_file('/static/decode_ais.js')
-
-@app.get('/ais_target_list.js')
-async def ais_target_list(request):
-    return send_file('/static/ais_target_list.js')
-
-@app.get('/ship.png')
-async def ship_png(request):
-    return send_file('/static/ship.png')
 
 websockets = []
 
@@ -56,25 +39,30 @@ async def websocket(request, ws):
     while True:
         data = await ws.receive()
 
-@app.get('/favicon.ico')
-async def favicon(request):
-    return send_file('/static/favicon.ico')
-
 @app.route('/', methods=['GET', 'POST'])
 async def index(req):
     name = None
     if req.method == 'POST':
-        wireless.ssid = req.form.get('ssid')
-        wireless.psk = req.form.get('psk')
+        c = config.config
+        needwrite = False
+        for name in c:
+            value = req.form.get(name)
+            if c[name] != value:
+                c[name] = value
+                if name in ['ssid', 'psk']:
+                    wireless.reset()
+                needwrite = True
+        if needwrite:
+            config.write()
 
-        c = alarm.config
-        c['muted'] = req.form.get('muted')
-        c['proximity_dist'] = req.form.get('proximity_dist')
-        c['tcpa_time'] = req.form.get('tcpa_time')
-        c['tcpa_dist'] = req.form.get('tcpa_dist')
+    return Template('index.html').render(config=c)
 
-        print('ssid', ssid, psk)
-    return Template('index.html').render(ssid=wireless.ssid, psk=wireless.psk)
+@app.route('/<path:path>')
+async def static(request, path):
+    if '..' in path:
+        # directory traversal is not allowed
+        return 'Not found', 404
+    return send_file('static/' + path)
 
 async def serve():
     try:
@@ -112,14 +100,14 @@ def gps_data(nmea):
     global last_gps_nmea
     last_gps_nmea = gps_data
 
-
 # for testing
 def main():
     import network, time
     #Connect to WLAN
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
-    wlan.connect(wireless.ssid, wireless.psk)
+    c = config.config
+    wlan.connect(c['ssid'], c['psk'])
 
     while not wlan.isconnected():
         print("connecting....", wlan.status())

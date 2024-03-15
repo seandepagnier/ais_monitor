@@ -20,9 +20,10 @@ import wireless
 import leds
 import web
 
-# this pin is used for a button that mutes the alarm
-mute_button = machine.Pin(12, machine.Pin.PULL_UP)
-
+# these pins are used for buttons
+buttons = {'mute': machine.Pin(12, machine.Pin.PULL_UP),
+           'anchor': machine.Pin(18, machine.Pin.PULL_UP),
+           'ap': machine.Pin(20, machine.Pin.PULL_UP)}
 
 # initialize uart0 to receive ais data at 38400 baud
 uart0 = machine.UART(0, baudrate=38400, tx=machine.Pin(0), rx=machine.Pin(1))
@@ -57,7 +58,9 @@ async def iteration():
     gps_data = None
     gps_time = time.ticks_ms()
     ships_led_time = 0
-    mute_toggle_time = time.ticks_ms()
+    button_toggle_times = {}
+    for button in buttons:
+        button_toggle_times[button] = time.ticks_ms()
 
     while True:
         t = time.ticks_ms()
@@ -92,6 +95,7 @@ async def iteration():
                 leds.on_timeout('gps', 10)
                 gps_time = time.ticks_ms()
                 web.gps_data(gps_line)
+                alarm.anchor(gps_data)
 
         # if no gps fix in 30 seconds, alarm!
         if t - gps_time > 30000:
@@ -112,14 +116,20 @@ async def iteration():
                 # recompute flash period based on how far the nearest ship is
                 ships_led_time = t+mindist*1000 # in milliseconds
 
-        # check mute button to toggle mute function
-        if not mute_button.value():
-            if t-mute_toggle_time > 1:
-                muted = alarm.config['muted']
-                alarm.config['muted'] = not muted
-                mute_toggle_time = t
-                leds.value('mute', not muted)
+        # check buttons to toggle functions
+        for name, pin in buttons.items():
+            if not pin.value():
+                if t-button_toggle_times[name] > 1:
+                    value = alarm.config[name]
+                    alarm.config[name] = not value
+                    button_toggle_times[name] = t
+                    leds.value(name, not value)
 
+                    if name == 'anchor':
+                        alarm.anchor_pos = gps_data
+                    elif name == 'ap':
+                        wireless.reset()
+                        
         # turn off leds that timed out
         leds.timeout(t)
 

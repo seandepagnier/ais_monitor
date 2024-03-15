@@ -14,7 +14,9 @@ led_indicies = {'pwr': 6,
                 'gps': 8,
                 'ships': 9,
                 'ownship': 10,
-                'mute': 11}
+                'mute': 11,
+                'anchor': 19,
+                'ap': 21}
 
 led_pins = {}
 for pin, i in led_indicies.items():

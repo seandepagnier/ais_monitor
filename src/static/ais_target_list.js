@@ -33,8 +33,6 @@ function connect_websocket() {
 connect_websocket();
 ships = {};
 
-
-
 var last_gps = null;
 function gps_message(data) {
     result = decode_gps(data);
@@ -68,9 +66,11 @@ function ais_message(data) {
             row.insertCell(c++).innerHTML = "<div id='" + field+mmsi+"'></div>";
 
         ships[mmsi] = result;
+    } else {
+        for(field of result)
+            ships[mmsi][field] = result[field];
     }
 
-    
     for(field of fields)
         if(field in result) {
             let div = document.getElementById(field+mmsi);
